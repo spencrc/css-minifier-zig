@@ -1,0 +1,126 @@
+p,
+h1,
+h2,
+a,
+ul {
+    font-size: 1.5rem;
+    margin: 0;
+    font-weight: normal;
+}
+
+h2 {
+    letter-spacing: 0.1rem;
+}
+
+a {
+    color: black;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.container {
+    margin: 0 auto;
+    display: flex;
+    gap: 1rem;
+    flex-direction: column;
+    align-items: center;
+}
+
+button,
+.button-placeholder {
+    color: black;
+    background-color: transparent;
+    border: 0px solid transparent;
+    font-size: 1.5rem;
+    padding: 0 6px;
+}
+
+button:hover {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.clue {
+    position: relative;
+    overflow: hidden;
+    background-color: #e6e3e3;
+    border-radius: 0.5rem;
+    width: 22.5rem;
+    display: flex;
+    flex-flow: column;
+    padding-top: 1.5rem;
+    padding-bottom: 0.25rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.progress-fill {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: #cdd8e4;
+    transform-origin: left center;
+    /* super important! */
+    z-index: 0;
+}
+
+.features {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    z-index: 10;
+}
+
+.input-frame {
+    border: 2px solid black;
+    border-radius: 0.5rem;
+    height: 2.25rem;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.input-frame.guessed {
+    pointer-events: none;
+}
+
+.input-frame.wrong {
+    background: #f03d33;
+    pointer-events: none;
+}
+
+.input-frame.correct {
+    background: #97deb6;
+    pointer-events: none;
+}
+
+input,
+.input-placeholder {
+    background: transparent;
+    outline: none;
+    width: 100%;
+    border: 0px solid transparent;
+    padding: 1rem;
+    font-size: 1.25rem;
+}
+
+::placeholder,
+.input-placeholder {
+    /* Edge 12 -18 */
+    color: black;
+    font-size: 1.25rem;
+}
+
+.label {
+    align-self: end;
+    font-size: 1rem;
+    line-height: 1.25rem;
+    font-weight: 700;
+    z-index: 10;
+}
