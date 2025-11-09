@@ -36,13 +36,11 @@ pub const TokenType = enum {
 pub const Token = struct {
     type: TokenType,
     lexeme: []const u8,
-    literal: []const u8,
 
-    pub fn init(t: TokenType, lexeme: []const u8, literal: []const u8) Token {
+    pub fn init(t: TokenType, lexeme: []const u8) Token {
         return Token{
             .type = t,
             .lexeme = lexeme,
-            .literal = literal,
         };
     }
 };
@@ -71,7 +69,7 @@ pub const Scanner = struct {
             try self.scan_token();
         }
 
-        try self.consume_token(.EOF);
+        try self.add_token(.EOF);
         return &self.tokens;
     }
 
@@ -80,25 +78,25 @@ pub const Scanner = struct {
         switch (c) {
             '/' => {
                 const current = self.peek() orelse {
-                    try self.consume_token(.DELIMITER);
+                    try self.add_token(.DELIMITER);
                     return;
                 };
                 if (current == '*') {
                     _ = self.advance();
                     self.consume_comment();
-                } else try self.consume_token(.DELIMITER);
+                } else try self.add_token(.DELIMITER);
             },
             ' ', '\t', '\n', '\r', '\x0C' => {},
             '"' => try self.consume_string_token(),
-            '(' => try self.consume_token(.LEFT_PAREN),
-            ')' => try self.consume_token(.RIGHT_PAREN),
-            '{' => try self.consume_token(.LEFT_CURLY),
-            '}' => try self.consume_token(.RIGHT_CURLY),
-            ',' => try self.consume_token(.COMMA),
-            ';' => try self.consume_token(.SEMICOLON),
-            '[' => try self.consume_token(.LEFT_SQUARE),
-            ']' => try self.consume_token(.RIGHT_SQUARE),
-            ':' => try self.consume_token(.COLON),
+            '(' => try self.add_token(.LEFT_PAREN),
+            ')' => try self.add_token(.RIGHT_PAREN),
+            '{' => try self.add_token(.LEFT_CURLY),
+            '}' => try self.add_token(.RIGHT_CURLY),
+            ',' => try self.add_token(.COMMA),
+            ';' => try self.add_token(.SEMICOLON),
+            '[' => try self.add_token(.LEFT_SQUARE),
+            ']' => try self.add_token(.RIGHT_SQUARE),
+            ':' => try self.add_token(.COLON),
             '@' => {
                 //if is the start of an identifier, scan at_keyword
                 //else, add delimiter
@@ -107,7 +105,7 @@ pub const Scanner = struct {
                 //if is a hash, scan hash
                 //else, add delimiter
             },
-            '>', '+', '!', '=', '%', '~', '|', '^', '$', '*', '.' => try self.consume_token(.DELIMITER),
+            '>', '+', '!', '=', '%', '~', '|', '^', '$', '*', '.' => try self.add_token(.DELIMITER),
             //TODO: add < for <!-- --> scanning
             else => {
                 if (isIdentStartCodePoint(c)) {
@@ -120,10 +118,6 @@ pub const Scanner = struct {
                 }
             },
         }
-    }
-
-    fn consume_token(self: *Scanner, t: TokenType) !void {
-        try self.add_token(t, "");
     }
 
     fn consume_comment(self: *Scanner) void {
@@ -140,13 +134,73 @@ pub const Scanner = struct {
     }
 
     fn consume_numeric_token(self: *Scanner) !void {
-        const result = try self.consume_number();
-        try self.add_token(.NUMBER, result);
+        try self.consume_number();
+
+        if (self.peek()) |current| {
+            if (current == '%') {
+                _ = self.advance();
+                return try self.add_token(.PERCENTAGE);
+            } else dimension: {
+                // technically not a perfect implementation, see:
+                // https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
+                if (!isIdentStartCodePoint(current))
+                    break :dimension;
+                const next_1 = self.peek_ahead(1) orelse break :dimension;
+                const next_2 = self.peek_ahead(2) orelse break :dimension;
+                if (isIdentStartCodePoint(next_1) and
+                    isIdentStartCodePoint(next_2))
+                {
+                    try self.consume_ident_sequence();
+                    return try self.add_token(.DIMENSION);
+                }
+            }
+        }
+
+        try self.add_token(.NUMBER);
     }
 
     fn consume_identlike_token(self: *Scanner) !void {
-        const result = try self.consume_ident_sequence();
-        try self.add_token(.IDENT, result);
+        try self.consume_ident_sequence();
+        const string = std.ascii.toLower(self.source[self.start..self.current]); //result of self.consume_ident_sequence()
+
+        url_or_function: {
+            var current = self.peek() orelse break :url_or_function;
+            var next_1: u8 = undefined;
+            if (std.mem.eql(
+                u8,
+                string,
+                "url",
+            )) {
+                if (current == '(') {
+                    _ = self.advance();
+
+                    while (true) {
+                        current = self.peek() orelse break :url_or_function;
+                        next_1 = self.peek_ahead(1) orelse break :url_or_function;
+                        if (std.ascii.isWhitespace(current) and
+                            std.ascii.isWhitespace(next_1))
+                        {
+                            _ = self.advance();
+                        } else break;
+                    }
+                    current = self.peek() orelse break :url_or_function;
+                    next_1 = self.peek_ahead(1) orelse break :url_or_function;
+                    if (current == '\'' or
+                        current == '"' or
+                        (std.ascii.isWhitespace(current) and (next_1 == '\'' or next_1 == '"')))
+                    {
+                        return try self.add_token(.FUNCTION);
+                    } else {
+                        //consume url token
+                    }
+                }
+            } else if (current == '(') {
+                _ = self.advance();
+                return try self.add_token(.FUNCTION);
+            }
+        }
+
+        try self.add_token(.IDENT);
     }
 
     fn consume_string_token(self: *Scanner) !void {
@@ -155,11 +209,11 @@ pub const Scanner = struct {
             const c = self.advance();
             switch (c) {
                 '"' => {
-                    try self.add_token(.STRING, self.source[self.start..self.current]);
+                    try self.add_token(.STRING);
                     return;
                 }, //closing quotation marks
                 '\n' => {
-                    try self.add_token(.BAD_STRING, self.source[self.start..self.current]);
+                    try self.add_token(.BAD_STRING);
                     return;
                 },
                 //need to handle escape sequences other than \n here!
@@ -167,10 +221,10 @@ pub const Scanner = struct {
             }
         }
         //No closing quote at EOF, bad string
-        try self.add_token(.BAD_STRING, self.source[self.start..self.current]);
+        try self.add_token(.BAD_STRING);
     }
 
-    fn consume_ident_sequence(self: *Scanner) ![]const u8 {
+    fn consume_ident_sequence(self: *Scanner) !void {
         while (!self.is_at_end()) {
             const c = self.peek() orelse break;
             if (isIdentStartCodePoint(c) or std.ascii.isDigit(c) or c == '-') {
@@ -180,64 +234,62 @@ pub const Scanner = struct {
             }
             //need to handle escape sequences here!
         }
-        return self.source[self.start..self.current];
     }
 
-    fn consume_number(self: *Scanner) ![]const u8 {
-        var current = self.peek() orelse return self.source[self.start..self.current];
+    fn consume_number(self: *Scanner) !void {
+        var current = self.peek() orelse return;
         var next_1: u8 = undefined;
         var next_2: u8 = undefined;
 
         if (current == '+' or current == '-') {
             _ = self.advance();
-            current = self.peek() orelse return self.source[self.start..self.current];
+            current = self.peek() orelse return;
         }
 
         while (!self.is_at_end() and std.ascii.isDigit(current)) {
             _ = self.advance();
-            current = self.peek() orelse return self.source[self.start..self.current];
+            current = self.peek() orelse return;
         }
 
-        next_1 = self.peek_ahead(1) orelse return self.source[self.start..self.current];
+        next_1 = self.peek_ahead(1) orelse return;
         if (current == '.' and std.ascii.isDigit(next_1)) {
             _ = self.advance();
             _ = self.advance();
-            current = self.peek() orelse return self.source[self.start..self.current];
+            current = self.peek() orelse return;
             while (!self.is_at_end() and std.ascii.isDigit(current)) {
                 _ = self.advance();
-                current = self.peek() orelse return self.source[self.start..self.current];
+                current = self.peek() orelse return;
             }
         }
 
-        next_1 = self.peek_ahead(1) orelse return self.source[self.start..self.current];
+        next_1 = self.peek_ahead(1) orelse return;
         if (current == 'E' or current == 'e') {
             if (next_1 == '-' or next_1 == '+') {
-                next_2 = self.peek_ahead(2) orelse return self.source[self.start..self.current];
+                next_2 = self.peek_ahead(2) orelse return;
                 if (std.ascii.isDigit(next_2)) {
                     _ = self.advance();
                     _ = self.advance();
                     _ = self.advance();
-                    current = self.peek() orelse return self.source[self.start..self.current];
+                    current = self.peek() orelse return;
                     while (!self.is_at_end() and std.ascii.isDigit(current)) {
                         _ = self.advance();
-                        current = self.peek() orelse return self.source[self.start..self.current];
+                        current = self.peek() orelse return;
                     }
                 }
             } else if (std.ascii.isDigit(next_1)) {
                 _ = self.advance();
                 _ = self.advance();
-                current = self.peek() orelse return self.source[self.start..self.current];
+                current = self.peek() orelse return;
                 while (!self.is_at_end() and std.ascii.isDigit(current)) {
                     _ = self.advance();
-                    current = self.peek() orelse return self.source[self.start..self.current];
+                    current = self.peek() orelse return;
                 }
             }
         }
-        return self.source[self.start..self.current];
     }
 
-    fn add_token(self: *Scanner, t: TokenType, literal: []const u8) !void {
-        const new_token = Token.init(t, self.source[self.start..self.current], literal);
+    fn add_token(self: *Scanner, t: TokenType) !void {
+        const new_token = Token.init(t, self.source[self.start..self.current]);
         try self.tokens.append(self.allocator, new_token);
     }
 
